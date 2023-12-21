@@ -4,33 +4,16 @@ log = logging.getLogger(__name__)
 
 from collections import defaultdict
 
-import torchvision.transforms
-from clip_checkpoint_path import (
-    CHECKPOINT_DIR,
-    finetuned_model_path,
-    pretrained_model_path,
-)
+import clip_dict
 from torch.func import functional_call
-from torch.utils.data import DataLoader
-from transformers import AutoFeatureExtractor, ResNetForImageClassification
 
-from src.adamerging import softmax_entropy
-from src.clip_eval import eval_single_dataset, eval_single_dataset_preprocess_head
-from src.datasets.common import maybe_dictionarize
-from src.heads import get_classification_head
-from src.modeling import ImageClassifier, ImageEncoder
-from src.tasks import check_parameterNamesMatch
 from src.tasks.arithmetic import *
-from src.tasks.task_vector import StateDict, TaskVector
-from src.ties_merging_utils import state_dict_to_vector, vector_to_state_dict
 from src.utils import timeit_context
 
 
-class Program:
+class BySampleProgram(clip_dict.DictLearnTTAProgram):
     def __init__(self, cfg: DictConfig):
-        self.cfg = cfg
-        cfg.save = str(CHECKPOINT_DIR / cfg.model)
-        cfg.data_location = str(DATA_DIR)
+        super().__init__(cfg)
 
         self.result_dir = RESULTS_DIR / cfg.model / "layer_wise_dict"
         if cfg.version is not None:
@@ -38,350 +21,132 @@ class Program:
         self.result_dir.mkdir(exist_ok=True, parents=True)
         self.result_path = self.result_dir / "results.csv"
 
-    def run(self):
-        self.load_models()
-        self.load_datasets()
+    def compute_task_vectors(
+        self,
+        dict_codings: Tensor,
+        sample_idx: int,
+    ):
+        """
+        This function computes task vectors by merging the task vector with task-wise dictionary codings.
 
-        if self.cfg.eval_dict_tta:
-            self.eval_dict_tta()
-        if self.cfg.eval_dict:
-            self.eval_dict()
+        Args:
+            dict_codings (Tensor): A tensor containing dictionary codings for tasks.
+            sample_idx (int): The index of the sample for which the task vectors are to be computed.
 
-    @property
-    @torch.no_grad()
-    def task_vectors(self):
-        with timeit_context("Computing task vectors"):
-            task_vectors_as_dict = [
-                state_dict_sub(
-                    ft.state_dict(),
-                    self.pretrained_model.state_dict(),
-                    strict=False,
+        Returns:
+            dict: A dictionary where each key is a parameter key and the value is the computed task vector for that parameter.
+        """
+        model_task_vectors = {}
+        coding = dict_codings[sample_idx].view(self.num_tasks, self.num_layers)
+        for layer_idx, param_key in enumerate(self.task_vectors_as_dict[0].keys()):
+            model_task_vectors[param_key] = 0
+            for task_idx in range(self.num_tasks):
+                model_task_vectors[param_key] += (
+                    coding[task_idx, layer_idx]
+                    * self.task_vectors_as_dict[task_idx][param_key]
                 )
-                for ft in self.finetuned_models
-            ]
-            self._reference_sd = task_vectors_as_dict[0]
-            task_vectors = torch.vstack(
-                [state_dict_to_vector(d) for d in task_vectors_as_dict]
-            )
-            task_vectors = task_vectors
-        return task_vectors
+        return model_task_vectors
 
-    def _sd_from_task_vector(self, task_vector):
-        task_vector_as_dict = vector_to_state_dict(task_vector, self._reference_sd)
-        sd = state_dict_add(task_vector_as_dict, self.pretrained_sd, strict=False)
-        return sd
-
-    def eval_dict_tta(self):
-        with timeit_context("Computing task vectors"):
-            task_vectors_as_dict = [
-                state_dict_sub(
-                    ft.state_dict(),
-                    self.pretrained_model.state_dict(),
-                    strict=False,
-                    device=self.cfg.dict_mapping_device,
-                )
-                for ft in self.finetuned_models
-            ]
-
-        optimizer = torch.optim.Adam(self.dict_mapping.parameters(), lr=self.cfg.lr)
-        self.dict_mapping.train()
-        for step_idx in tqdm(range(1000), "training dict mapping"):
-            losses = 0
-            for datasset_idx, dataset_name in enumerate(self.cfg.test_datasets):
-                batch = next(self.shuffled_test_loader_iters[datasset_idx])
-                batch = maybe_dictionarize(batch)
-                x = batch["images"]  # use images only
-
-                dict_input = self.dict_preprocess(
-                    x, return_tensors="pt"
-                ).pixel_values.to(self.cfg.dict_mapping_device, non_blocking=True)
-                dict_features = self.dict_feature_extractor(dict_input)
-                dict_code = self.dict_mapping(dict_features)
-
-                model_input = self.model_preprocess(x).to("cuda", non_blocking=True)
-                model_features = []
-                for i in range(x.size(0)):
-                    model_task_vectors = {}
-                    code = dict_code[i].view(self.num_tasks, self.num_layers)
-                    for j, k in enumerate(task_vectors_as_dict[0].keys()):
-                        model_task_vectors[k] = 0
-                        for l in range(self.num_tasks):
-                            model_task_vectors[k] += (
-                                code[l, j] * task_vectors_as_dict[l][k]
-                            )
-                    model_sd = state_dict_add(
-                        self.pretrained_sd, model_task_vectors, device="cuda"
-                    )
-                    _model_feature = functional_call(
-                        self.forward_model,
-                        model_sd,
-                        model_input[i : i + 1],
-                    )
-                    model_features.append(_model_feature)
-                model_features = torch.cat(model_features)
-                model_logits = self.classification_heads[dataset_name](model_features)
-                loss = softmax_entropy(model_logits).mean(0)
-                losses += loss
-
-            optimizer.zero_grad()
-            losses.backward()
-            optimizer.step()
-
-            if (step_idx + 1) % 50 == 0:
-                (self.result_dir / "checkpoints").mkdir(exist_ok=True)
-                torch.save(
-                    self.dict_mapping,
-                    self.result_dir
-                    / "checkpoints"
-                    / f"dict_mapping_step={step_idx+1}.pt",
-                )
-
-    @torch.inference_mode()
-    def eval_dict(self):
-        with timeit_context("Computing task vectors"):
-            task_vectors_as_dict = [
-                state_dict_sub(
-                    ft.state_dict(),
-                    self.pretrained_model.state_dict(),
-                    strict=False,
-                    device="cuda",
-                )
-                for ft in self.finetuned_models
-            ]
-        results = defaultdict(list)
-
-        for step_idx in tqdm(
-            range(100, 1001, 100), "evaluating dict mapping", leave=False
-        ):
-            self.dict_mapping = torch.load(
-                self.result_dir / "checkpoints" / f"dict_mapping_step={step_idx}.pt"
-            )
-            self.dict_mapping.eval()
-            results["step"].append(step_idx)
-
-            for dataset_idx, dataset_name in enumerate(
-                tqdm(
-                    self.cfg.test_datasets,
-                    "evaluating datasets",
-                    leave=False,
-                )
-            ):
-                test_loader = self.test_loaders[dataset_idx]
-                TOTAL_CORRECT = 0
-                TOTAL_COUNT = 0
-                for batch in (
-                    pbar := tqdm(
-                        test_loader,
-                        f"evaluate {dataset_name}",
-                        leave=False,
-                    )
-                ):
-                    batch = maybe_dictionarize(batch)
-                    x = batch["images"]
-                    y = batch["labels"]
-
-                    dict_input = self.dict_preprocess(
-                        x, return_tensors="pt"
-                    ).pixel_values.to(self.cfg.dict_mapping_device, non_blocking=True)
-                    dict_features = self.dict_feature_extractor(dict_input)
-                    dict_code = self.dict_mapping(dict_features)
-
-                    model_input = self.model_preprocess(x).to("cuda", non_blocking=True)
-                    model_features = []
-                    for i in range(x.size(0)):
-                        model_task_vectors = {}
-                        code = dict_code[i].view(self.num_tasks, self.num_layers)
-                        for j, k in enumerate(task_vectors_as_dict[0].keys()):
-                            model_task_vectors[k] = 0
-                            for l in range(self.num_tasks):
-                                model_task_vectors[k] += (
-                                    code[l, j] * task_vectors_as_dict[l][k]
-                                )
-                        model_sd = state_dict_add(
-                            self.pretrained_sd, model_task_vectors
-                        )
-                        _model_feature = functional_call(
-                            self.forward_model,
-                            model_sd,
-                            model_input[i : i + 1],
-                        )
-                        model_features.append(_model_feature)
-                    model_features = torch.cat(model_features)
-                    model_logits = self.classification_heads[dataset_name](
-                        model_features
-                    )
-                    model_preds = model_logits.argmax(-1).cpu()
-                    correct = (model_preds == y).sum().item()
-                    TOTAL_CORRECT += correct
-                    TOTAL_COUNT += len(y)
-                    acc = TOTAL_CORRECT / TOTAL_COUNT
-                    pbar.set_postfix_str(f"acc={acc:.2f}")
-                results[dataset_name].append(acc)
-            (df := pd.DataFrame(results)).to_csv(self.result_path, index=False)
-            print(df)
-
-    def eval_individuals(self):
-        results = defaultdict(list)
-
-        self.model = self.pretrained_model
-        _result = defaultdict(list)
-        self.eval_model_on_datasets(epoch_idx=0, results=_result)
-        results["model"].append("pretrained")
-        for dataset_name, acc in zip(_result["dataset"], _result["acc"]):
-            results[dataset_name].append(acc)
-        print(df := pd.DataFrame(results))
-        df.to_csv(self.result_path, index=False)
-
-        for dataset_name, image_encoder in track(
-            zip(self.cfg.datasets, self.finetuned_models),
-            "evaluating finetuned models",
-        ):
-            self.model = image_encoder
-            _result = defaultdict(list)
-            self.eval_model_on_datasets(epoch_idx=0, results=_result)
-            results["model"].append(dataset_name)
-            for dataset_name, acc in zip(_result["dataset"], _result["acc"]):
-                results[dataset_name].append(acc)
-        print(df := pd.DataFrame(results))
-        df.to_csv(self.result_path, index=False)
-
-    def load_models(self):
+    def load_models(self, *, free_finetuned_models: bool = True):
         cfg = self.cfg
+        self.num_tasks = len(cfg.test_datasets)
 
-        # load pretrained and fine-tuned model
-        with timeit_context():
-            log.info("load models")
-            pretrained_model = torch.load(
-                pretrained_model_path(cfg.model), map_location="cpu"
-            )
-            finetuned_models = [
-                torch.load(
-                    finetuned_model_path(cfg.model, dataset_name), map_location="cpu"
+        self.load_clip_models()
+        with timeit_context("Computing task vectors"):
+            self.task_vectors_as_dict = [
+                state_dict_sub(
+                    ft.state_dict(),
+                    self.pretrained_model.state_dict(),
+                    strict=False,
+                    device=cfg.task_vector_device,
                 )
-                for dataset_name in track(cfg.test_datasets, "loading finetuned models")
+                for i, ft in enumerate(self.finetuned_models)
             ]
 
-        self.pretrained_model: ImageEncoder = pretrained_model
-        self.finetuned_models = finetuned_models
-        self.classification_heads = {
-            dataset_name: get_classification_head(cfg, dataset_name).cuda()
-            for dataset_name in cfg.test_datasets
-        }
+        self.num_layers = len(self.task_vectors_as_dict[0])
 
-        self.model_preprocess = torchvision.transforms.Compose(
-            self.pretrained_model.val_preprocess.transforms[
-                -1:
-            ]  # only normalization left, see `self.load_datasets`
-        )
-        self.forward_model = deepcopy(self.pretrained_model).to("cuda")
+        if free_finetuned_models:  # free finetuned models to save memory
+            del self.finetuned_models
+
+        self.load_dict_models(
+            coding_size=self.num_tasks * self.num_layers
+        )  # NOTE: coding_size = self.num_tasks * self.num_layers if layer-wise codings
+        self.setup_preprocess()
+
+        # setup forward model, this is used to perform inference
+        self.forward_model = deepcopy(self.pretrained_model)
         for p in self.forward_model.parameters():
             p.requires_grad = False
         self.forward_model.eval()
         self.pretrained_sd = self.pretrained_model.state_dict()
-        self.pretrained_sd = {
-            k: v.to(cfg.dict_mapping_device, non_blocking=True)
-            for k, v in self.pretrained_sd.items()
-        }
 
-        self.num_tasks = len(cfg.test_datasets)
 
-        # load dict feature extractor model
-        self.dict_preprocess = AutoFeatureExtractor.from_pretrained(
-            cfg.dict_feature_extractor
-        )
-        dict_feature_extractor = ResNetForImageClassification.from_pretrained(
-            cfg.dict_feature_extractor
-        )
-        dict_feature_extractor.classifier = torch.nn.Flatten(1, -1)
-        self._dict_feature_extractor = dict_feature_extractor.to(
-            cfg.dict_mapping_device, non_blocking=True
-        )
-        for p in self._dict_feature_extractor.parameters():
-            p.requires_grad = False
-        self._dict_feature_extractor.eval()
-        self.dict_feature_extractor = lambda pixel_values: self._dict_feature_extractor(
-            pixel_values=pixel_values
-        ).logits.to(
-            cfg.dict_mapping_device
-        )  # in fact, this is the extracted feature, not logits
-
-        # dict mapping
-        if False:  # single layer
-            self.dict_mapping = torch.nn.Linear(
-                dict_feature_extractor.config.hidden_sizes[-1], self.num_tasks
-            ).to(cfg.dict_mapping_device, non_blocking=True)
-            self.dict_mapping.weight.data.zero_()
-            self.dict_mapping.bias.data.fill_(0.3)
-        else:
-            task_vector_0 = state_dict_sub(
-                finetuned_models[0].state_dict(),
-                pretrained_model.state_dict(),
-                strict=False,
-            )
-            self.num_layers = len(task_vector_0)
-            _dict_mapping = torch.nn.Linear(
-                dict_feature_extractor.config.hidden_sizes[-1],
-                self.num_tasks * self.num_layers,
-            )
-            _dict_mapping.weight.data.zero_()
-            _dict_mapping.bias.data.fill_(0.3)
-            self.dict_mapping = torch.nn.Sequential(
-                torch.nn.Linear(
-                    dict_feature_extractor.config.hidden_sizes[-1],
-                    dict_feature_extractor.config.hidden_sizes[-1],
-                ),
-                torch.nn.ReLU(),
-                _dict_mapping,
-            ).to(cfg.dict_mapping_device, non_blocking=True)
-
-    def load_datasets(self):
-        import open_clip.transform
-        import torchvision.transforms
-
-        from src.datasets.registry import get_dataset
-
+class ByBatchProgram(BySampleProgram):
+    @functools.cache
+    def forward_device(self, task_idx: int):
         cfg = self.cfg
 
-        datasets = [
-            get_dataset(
-                dataset_name,
-                torchvision.transforms.Compose(
-                    [
-                        torchvision.transforms.Resize((224, 224)),
-                        open_clip.transform._convert_to_rgb,
-                        torchvision.transforms.ToTensor(),
-                    ]
-                ),
-                location=cfg.data_location,
-                batch_size=cfg.batch_size,
-                num_workers=cfg.num_workers,
-            )
-            for dataset_name in cfg.test_datasets
-        ]
-        self.test_datasets = [d.test_dataset for d in datasets]
-        self.test_loaders = [
-            DataLoader(
-                d,
-                shuffle=False,
-                batch_size=cfg.batch_size,
-                num_workers=cfg.num_workers,
-                pin_memory=True,
-            )
-            for d in self.test_datasets
-        ]
-        self.shuffled_test_loaders = [
-            DataLoader(
-                d,
-                shuffle=True,
-                batch_size=cfg.batch_size,
-                num_workers=cfg.num_workers,
-                pin_memory=True,
-            )
-            for d in self.test_datasets
-        ]
-        self.shuffled_test_loader_iters = [
-            iter(itertools.cycle(d)) for d in self.shuffled_test_loaders
-        ]
+        if not isinstance(cfg.forward_devices, (list, ListConfig)):
+            return torch.device(cfg.forward_devices)
+        else:
+            num_forward_devices = len(cfg.forward_devices)
+            assert (
+                self.num_tasks % num_forward_devices == 0
+            ), "batch size must be divisible by the number of forward devices"
+            forward_device_idx = task_idx // (self.num_tasks // num_forward_devices)
+            return torch.device(cfg.forward_devices[forward_device_idx])
+
+    def model_forward(self, x, *, task_idx: int, task_name: str):
+        cfg = self.cfg
+
+        # compute the dictionary codings
+        dict_input = self.dict_preprocess(
+            x, return_tensors="pt", do_rescale=False
+        ).pixel_values.to(self.cfg.dict_mapping_device, non_blocking=True)
+        dict_features = self.dict_feature_extractor(dict_input)
+        dict_codings = self.dict_mapping(dict_features).to(cfg.task_vector_device)
+
+        # compute the model logits
+        model_input = self.model_preprocess(x)  # still on CPU
+        model_features = []
+
+        # * NOTE: to reduce the memory usage, we compute the model features batch by batch in Program2
+        dict_codings = dict_codings.mean(dim=0, keepdim=True)
+        model_task_vector = self.compute_task_vectors(dict_codings, 0)
+        model_task_vector = {
+            k: v.to(self.forward_device(task_idx)) for k, v in model_task_vector.items()
+        }
+        model_sd = state_dict_add(
+            self.pretrained_sd_on_device(self.forward_device(task_idx)),
+            model_task_vector,
+        )
+        model_features = functional_call(
+            self.forward_model,
+            model_sd,
+            model_input.to(self.forward_device(task_idx)),
+        ).to(self.forward_device(0), non_blocking=True)
+
+        # for sample_idx in range(x.size(0)):
+        #     model_task_vector = self.compute_task_vectors(dict_codings, sample_idx)
+        #     model_task_vector = {
+        #         k: v.to(self.forward_device(sample_idx))
+        #         for k, v in model_task_vector.items()
+        #     }
+        #     model_sd = state_dict_add(
+        #         self.pretrained_sd_on_device(self.forward_device(sample_idx)),
+        #         model_task_vector,
+        #     )
+        #     _model_feature = functional_call(
+        #         self.forward_model,
+        #         model_sd,
+        #         model_input[sample_idx : sample_idx + 1].to(
+        #             self.forward_device(sample_idx)
+        #         ),
+        #     ).to(self.forward_device(0), non_blocking=True)
+        #     model_features.append(_model_feature)
+        # model_features = torch.cat(model_features)
+        model_logits = self.classification_heads[task_name](model_features)
+        return model_logits  # on the first forward device
 
 
 @hydra.main(
@@ -390,7 +155,12 @@ class Program:
     version_base=None,
 )
 def main(cfg: DictConfig) -> None:
-    (program := Program(cfg)).run()
+    if cfg.eval_dict_tta and not cfg.eval_dict:
+        (program := ByBatchProgram(cfg)).run()
+    elif not cfg.eval_dict_tta and cfg.eval_dict:
+        (program := BySampleProgram(cfg)).run()
+    else:
+        raise ValueError("either eval_dict or eval_dict_tta must be True")
 
 
 if __name__ == "__main__":

@@ -23,7 +23,7 @@ from src.tasks.arithmetic import *
 from src.utils import timeit_context
 
 
-class Program(ABC):
+class DictLearnTTAProgram(ABC):
     @abstractmethod
     def compute_task_vectors(
         self,
@@ -79,7 +79,9 @@ class Program(ABC):
     def eval_dict(self):
         results = defaultdict(list)
 
-        for step_idx in tqdm([1000], "evaluating dict mapping", leave=False):
+        for step_idx in tqdm(
+            reversed(range(100, 1001, 100)), "evaluating dict mapping", leave=False
+        ):
             self._dict_mapping = torch.load(
                 self.result_dir / "checkpoints" / f"dict_mapping_step={step_idx}.pt",
                 map_location=torch.device(self.cfg.dict_mapping_device),
@@ -118,8 +120,8 @@ class Program(ABC):
                     acc = TOTAL_CORRECT / TOTAL_COUNT
                     pbar.set_postfix_str(f"acc={acc:.2f}")
                 results[dataset_name].append(acc)
-                (df := pd.DataFrame(results)).to_csv(self.result_path, index=False)
-                print(df)
+            (df := pd.DataFrame(results)).to_csv(self.result_path, index=False)
+            print(df)
 
     @functools.cache
     def forward_device(self, sample_idx: int):
@@ -166,9 +168,9 @@ class Program(ABC):
         cfg = self.cfg
 
         # compute the dictionary codings
-        dict_input = self.dict_preprocess(x, return_tensors="pt").pixel_values.to(
-            self.cfg.dict_mapping_device, non_blocking=True
-        )
+        dict_input = self.dict_preprocess(
+            x, return_tensors="pt", do_rescale=False
+        ).pixel_values.to(self.cfg.dict_mapping_device, non_blocking=True)
         dict_features = self.dict_feature_extractor(dict_input)
         dict_codings = self.dict_mapping(dict_features).to(cfg.task_vector_device)
 
@@ -425,7 +427,7 @@ class Program(ABC):
                 shuffle=True,
                 batch_size=cfg.batch_size,
                 num_workers=cfg.num_workers,
-                pin_memory=True,
+                pin_memory=False,
             )
             for d in self.test_datasets
         ]

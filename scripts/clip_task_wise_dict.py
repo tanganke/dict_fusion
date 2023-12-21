@@ -5,29 +5,13 @@ log = logging.getLogger(__name__)
 from collections import defaultdict
 
 import clip_dict
-import torchvision.transforms
-from clip_checkpoint_path import (
-    CHECKPOINT_DIR,
-    finetuned_model_path,
-    pretrained_model_path,
-)
 from torch.func import functional_call
-from torch.utils.data import DataLoader
-from transformers import AutoFeatureExtractor, ResNetForImageClassification
 
-from src.adamerging import softmax_entropy
-from src.clip_eval import eval_single_dataset, eval_single_dataset_preprocess_head
-from src.datasets.common import maybe_dictionarize
-from src.heads import get_classification_head
-from src.modeling import ImageClassifier, ImageEncoder
-from src.tasks import check_parameterNamesMatch
 from src.tasks.arithmetic import *
-from src.tasks.task_vector import StateDict, TaskVector
-from src.ties_merging_utils import state_dict_to_vector, vector_to_state_dict
 from src.utils import timeit_context
 
 
-class Program(clip_dict.Program):
+class BySampleProgram(clip_dict.DictLearnTTAProgram):
     def __init__(self, cfg: DictConfig):
         super().__init__(cfg)
 
@@ -63,18 +47,7 @@ class Program(clip_dict.Program):
         return model_task_vector
 
 
-class Program2(Program):
-    def compute_task_vectors(
-        self,
-        dict_codings: Tensor,
-        sample_idx: int,
-    ):
-        model_task_vector = state_dict_weighted_sum(
-            self.task_vectors_as_dict,
-            dict_codings[sample_idx],
-        )
-        return model_task_vector
-
+class ByBatchProgram(BySampleProgram):
     @functools.cache
     def forward_device(self, task_idx: int):
         cfg = self.cfg
@@ -93,9 +66,9 @@ class Program2(Program):
         cfg = self.cfg
 
         # compute the dictionary codings
-        dict_input = self.dict_preprocess(x, return_tensors="pt").pixel_values.to(
-            self.cfg.dict_mapping_device, non_blocking=True
-        )
+        dict_input = self.dict_preprocess(
+            x, return_tensors="pt", do_rescale=False
+        ).pixel_values.to(self.cfg.dict_mapping_device, non_blocking=True)
         dict_features = self.dict_feature_extractor(dict_input)
         dict_codings = self.dict_mapping(dict_features).to(cfg.task_vector_device)
 
@@ -149,9 +122,9 @@ class Program2(Program):
 )
 def main(cfg: DictConfig) -> None:
     if cfg.eval_dict_tta and not cfg.eval_dict:
-        (program := Program2(cfg)).run()
+        (program := ByBatchProgram(cfg)).run()
     elif not cfg.eval_dict_tta and cfg.eval_dict:
-        (program := Program(cfg)).run()
+        (program := BySampleProgram(cfg)).run()
     else:
         raise ValueError("either eval_dict or eval_dict_tta must be True")
 
