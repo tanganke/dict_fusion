@@ -1,0 +1,21 @@
+defaults:
+  - clip_default
+  - _self_
+
+eval_dict_tta: true
+eval_dict: false
+
+batch_size: 4
+
+dict_feature_extractor: microsoft/resnet-18
+
+
+version: null
+
+lr: 1e-5
+
+# device configurations
+dict_feature_extractor_device: cuda
+dict_mapping_device: cuda
+task_vector_device: cuda
+forward_devices: cuda

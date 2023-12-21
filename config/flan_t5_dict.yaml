@@ -1,0 +1,10 @@
+defaults:
+  - flan_t5_default
+  - _self_
+
+eval_dict_tta: true
+eval_dict: false
+
+batch_size: 4
+
+lr: 1e-5
