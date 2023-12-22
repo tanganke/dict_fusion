@@ -3,6 +3,7 @@ from _common import *
 log = logging.getLogger(__name__)
 
 from flan_t5_dict import DictLearnTTAProgram
+from torch.func import functional_call
 
 from src.tasks.arithmetic import *
 
@@ -15,6 +16,7 @@ class BySampleProgram(DictLearnTTAProgram):
         if cfg.version is not None:
             self.result_dir = self.result_dir / f"version_{cfg.version}"
         self.result_dir.mkdir(parents=True, exist_ok=True)
+        self.result_path = self.result_dir / "results.csv"
 
     def compute_task_vectors(self, dict_codings: Tensor, sample_idx: int):
         model_task_vector = state_dict_weighted_sum(
@@ -67,27 +69,27 @@ class ByBatchProgram(BySampleProgram):
             model_task_vector,
             strict=False,
         )
-        self.forward_model.load_state_dict(
-            self.pretrained_sd_on_device(self.forward_device(task_idx)),
-            strict=True,
-            assign=True,
-        )
-        self.forward_model.load_state_dict(
-            model_sd,
-            strict=False,
-            assign=True,
-        )
+        forward_model = self.forward_model_on_device(self.forward_device(task_idx))
+        forward_model.train()
+
         model_logits = (
-            self.forward_model(
-                input_ids=input_ids.to(self.forward_device(task_idx)),
-                attention_mask=attention_mask.to(self.forward_device(task_idx)),
-                decoder_input_ids=torch.ones(
-                    input_ids.size(0),  # mini batch size
-                    1,
-                    dtype=torch.long,
-                    device=self.forward_device(task_idx),
-                )
-                * self.tokenizer.pad_token_id,
+            functional_call(
+                forward_model,
+                model_sd,
+                args=(),
+                kwargs=dict(
+                    input_ids=input_ids.to(self.forward_device(task_idx)),
+                    attention_mask=attention_mask.to(self.forward_device(task_idx)),
+                    decoder_input_ids=torch.ones(
+                        input_ids.size(0),  # mini batch size
+                        1,
+                        dtype=torch.long,
+                        device=self.forward_device(task_idx),
+                    )
+                    * self.tokenizer.pad_token_id,
+                ),
+                tie_weights=False,
+                strict=False,
             )
             .logits[:, 0, :]
             .to(self.forward_device(0), non_blocking=True)

@@ -37,6 +37,9 @@ class DictLearnTTAProgram(ABC):
         cfg.save = str(CHECKPOINT_DIR / cfg.model)
         cfg.data_location = str(DATA_DIR)
 
+        if cfg.seen_datasets is None:
+            cfg.seen_datasets = cfg.test_datasets
+
     def run(self):
         self.load_models()
         self.load_datasets()
@@ -51,7 +54,7 @@ class DictLearnTTAProgram(ABC):
         self._dict_mapping.train()
         for step_idx in tqdm(range(1000), "training dict mapping"):
             losses = 0
-            for dataset_idx, dataset_name in enumerate(self.cfg.test_datasets):
+            for dataset_idx, dataset_name in enumerate(self.cfg.seen_datasets):
                 batch = next(self.shuffled_test_loader_iters[dataset_idx])
                 batch = maybe_dictionarize(batch)
                 x = batch["images"]  # use images only
@@ -218,12 +221,15 @@ class DictLearnTTAProgram(ABC):
             pretrained_model = torch.load(
                 pretrained_model_path(cfg.model), map_location="cpu"
             )
-            finetuned_models = [
-                torch.load(
-                    finetuned_model_path(cfg.model, dataset_name), map_location="cpu"
+            finetuned_models = []
+            for dataset_name in track(cfg.seen_datasets, "loading finetuned models"):
+                log.info(f"loading finetuned model for {dataset_name}")
+                finetuned_models.append(
+                    torch.load(
+                        finetuned_model_path(cfg.model, dataset_name),
+                        map_location="cpu",
+                    )
                 )
-                for dataset_name in track(cfg.test_datasets, "loading finetuned models")
-            ]
 
         self.pretrained_model: ImageEncoder = pretrained_model
         self.finetuned_models = finetuned_models
@@ -338,7 +344,7 @@ class DictLearnTTAProgram(ABC):
 
     def load_models(self, *, free_finetuned_models: bool = True):
         cfg = self.cfg
-        self.num_tasks = len(cfg.test_datasets)
+        self.num_tasks = len(cfg.seen_datasets)
 
         self.load_clip_models()
         with timeit_context("Computing task vectors"):

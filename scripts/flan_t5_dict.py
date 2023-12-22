@@ -96,6 +96,9 @@ class DictLearnTTAProgram(flan_t5_individuals.Program, ABC):
             ):
                 log.info(f"evaluating {dataset_name}")
                 test_loader = self.test_loaders[dataset_idx]
+                if self.cfg.fast_dev_run:
+                    log.info("fast_dev_run: only use the first batch")
+                    test_loader = [next(iter(test_loader))]
                 score = flan_t5_individuals.metric_func[dataset_name](
                     self, test_loader, self.tokenizer
                 )
@@ -145,35 +148,37 @@ class DictLearnTTAProgram(flan_t5_individuals.Program, ABC):
                 model_task_vector,
                 strict=False,
             )
-            self.forward_model.load_state_dict(
-                self.pretrained_sd_on_device(self.forward_device(sample_idx)),
-                strict=True,
-                assign=True,
-            )  #  load the original weights
-            self.forward_model.load_state_dict(
-                model_sd,
-                strict=False,
-                assign=True,
-            )  # update modified weights
+
+            forward_model = self.forward_model_on_device(
+                self.forward_device(sample_idx)
+            )
             _model_logits = (
-                self.forward_model(
-                    input_ids=input_ids[sample_idx : sample_idx + 1].to(
-                        self.forward_device(sample_idx)
+                functional_call(
+                    forward_model,
+                    model_sd,
+                    args=(),
+                    kwargs=dict(
+                        input_ids=input_ids[sample_idx : sample_idx + 1].to(
+                            self.forward_device(sample_idx)
+                        ),
+                        attention_mask=attention_mask[sample_idx : sample_idx + 1].to(
+                            self.forward_device(sample_idx)
+                        ),
+                        decoder_input_ids=torch.ones(
+                            1,  # mini batch size
+                            1,
+                            dtype=torch.long,
+                            device=self.forward_device(sample_idx),
+                        )
+                        * self.tokenizer.pad_token_id,
                     ),
-                    attention_mask=attention_mask[sample_idx : sample_idx + 1].to(
-                        self.forward_device(sample_idx)
-                    ),
-                    decoder_input_ids=torch.ones(
-                        1,  # mini batch size
-                        1,
-                        dtype=torch.long,
-                        device=self.forward_device(sample_idx),
-                    )
-                    * self.tokenizer.pad_token_id,
+                    tie_weights=False,
+                    strict=False,
                 )
                 .logits[:, 0, :]
                 .to(self.forward_device(0), non_blocking=True)
             )
+
             model_logits.append(_model_logits)
         model_logits = torch.cat(model_logits)
         return model_logits  # on the first forward device
@@ -216,9 +221,19 @@ class DictLearnTTAProgram(flan_t5_individuals.Program, ABC):
                 assign=True,
             )  # update modified weights
             _output = self.forward_model.generate(
-                input_ids.to(self.forward_device(sample_idx))
+                input_ids[sample_idx : sample_idx + 1].to(
+                    self.forward_device(sample_idx)
+                )
             ).to(self.forward_device(0), non_blocking=True)
             model_output.append(_output)
+        max_len = max([o.size(1) for o in model_output])
+        for i in range(len(model_output)):
+            # padding to the same length
+            model_output[i] = torch.nn.functional.pad(
+                model_output[i],
+                (0, max_len - model_output[i].size(1)),
+                value=self.tokenizer.pad_token_id,
+            )
         model_output = torch.cat(model_output)
         return model_output  # on the first forward device
 
@@ -279,8 +294,9 @@ class DictLearnTTAProgram(flan_t5_individuals.Program, ABC):
         )  # NOTE: coding_size = self.num_tasks * self.num_layers if layer-wise codings
 
         # setup forward model, this is used to perform inference
-        self.forward_model = deepcopy(self.pretrained_model)
-        for p in self.forward_model.parameters():
-            p.requires_grad = False
-        self.forward_model.eval()
+        self.forward_model = self.forward_model_on_device("cpu")
         self.pretrained_sd = self.pretrained_model.state_dict()
+
+    @functools.cache
+    def forward_model_on_device(self, device):
+        return deepcopy(self.pretrained_model).to(device)

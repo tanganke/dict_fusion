@@ -49,7 +49,7 @@ class BySampleProgram(clip_dict.DictLearnTTAProgram):
 
     def load_models(self, *, free_finetuned_models: bool = True):
         cfg = self.cfg
-        self.num_tasks = len(cfg.test_datasets)
+        self.num_tasks = len(cfg.seen_datasets)
 
         self.load_clip_models()
         with timeit_context("Computing task vectors"):
