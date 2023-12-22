@@ -11,54 +11,17 @@ class BySampleProgram(DictLearnTTAProgram):
     def __init__(self, cfg: DictConfig):
         super().__init__(cfg)
 
-        self.result_dir = self.result_dir / "layer_wise_dict"
+        self.result_dir = self.result_dir / "task_wise_dict"
         if cfg.version is not None:
             self.result_dir = self.result_dir / f"version_{cfg.version}"
         self.result_dir.mkdir(parents=True, exist_ok=True)
 
-    def compute_task_vectors(
-        self,
-        dict_codings: Tensor,
-        sample_idx: int,
-    ):
-        """
-        This function computes task vectors by merging the task vector with task-wise dictionary codings.
-
-        Args:
-            dict_codings (Tensor): A tensor containing dictionary codings for tasks.
-            sample_idx (int): The index of the sample for which the task vectors are to be computed.
-
-        Returns:
-            dict: A dictionary where each key is a parameter key and the value is the computed task vector for that parameter.
-        """
-        model_task_vectors = {}
-        coding = dict_codings[sample_idx].view(self.num_tasks, self.num_layers)
-        for layer_idx, param_key in enumerate(self.task_vectors[0].keys()):
-            model_task_vectors[param_key] = 0
-            for task_idx in range(self.num_tasks):
-                model_task_vectors[param_key] += (
-                    coding[task_idx, layer_idx] * self.task_vectors[task_idx][param_key]
-                )
-        return model_task_vectors
-
-    def load_models(self):
-        cfg = self.cfg
-        self.num_tasks = len(cfg.test_datasets)
-
-        # load flan-t5 models
-        super(DictLearnTTAProgram, self).load_models(cfg.task_vector_device)
-        self.num_layers = len(self.task_vectors[0])
-
-        self.load_dict_models(
-            coding_size=self.num_tasks * self.num_layers
-        )  # NOTE: coding_size = self.num_tasks * self.num_layers if layer-wise codings
-
-        # setup forward model, this is used to perform inference
-        self.forward_model = deepcopy(self.pretrained_model)
-        for p in self.forward_model.parameters():
-            p.requires_grad = False
-        self.forward_model.eval()
-        self.pretrained_sd = self.pretrained_model.state_dict()
+    def compute_task_vectors(self, dict_codings: Tensor, sample_idx: int):
+        model_task_vector = state_dict_weighted_sum(
+            self.task_vectors,
+            dict_codings[sample_idx],
+        )
+        return model_task_vector
 
 
 class ByBatchProgram(BySampleProgram):

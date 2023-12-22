@@ -1,8 +1,7 @@
 defaults:
   - hydra: default
   - models: flan-t5-base
-  - peft: nopeft
-  - optim: mezo
+  - peft: lora-16
   - _self_
 
 seed: 42

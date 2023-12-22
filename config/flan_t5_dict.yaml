@@ -2,9 +2,20 @@ defaults:
   - flan_t5_default
   - _self_
 
-eval_dict_tta: true
-eval_dict: false
+eval_dict_tta: false
+eval_dict: true
 
 batch_size: 4
 
+dict_feature_extractor: paraphrase-MiniLM-L6-v2 # sentenceTransformer: https://huggingface.co/sentence-transformers
+
+
+version: null
+
 lr: 1e-5
+
+# device configurations
+dict_feature_extractor_device: cuda
+dict_mapping_device: cuda
+task_vector_device: cuda
+forward_devices: cuda

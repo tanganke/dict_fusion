@@ -307,7 +307,7 @@ class Program:
             self.pretrained_model, peft.PeftModel
         ), "pretrained model should not be a peft model"
 
-    def load_datasets(self):
+    def load_datasets(self, setup_dataloaders: bool = True):
         """
         Loads the datasets specified in the configuration. If a dataset is found in the cache, it is loaded from there.
         Otherwise, it is instantiated from the configuration, optionally preprocessed, and saved to the cache.
@@ -363,30 +363,32 @@ class Program:
             test_datasets.append(test_dataset)
 
         self.test_datasets = test_datasets
-        self.test_loaders = self.fabric.setup_dataloaders(
-            *[
-                DataLoader(
-                    test_dataset,
-                    batch_size=self.cfg.batch_size * 3,
-                    num_workers=self.cfg.num_workers,
-                    shuffle=False,
-                    collate_fn=default_data_collator,
-                )
-                for test_dataset in test_datasets
-            ]
-        )
-        self.shuffled_test_loaders = self.fabric.setup_dataloaders(
-            *[
-                DataLoader(
-                    test_dataset,
-                    batch_size=self.cfg.batch_size,
-                    num_workers=self.cfg.num_workers,
-                    shuffle=True,
-                    collate_fn=default_data_collator,
-                )
-                for test_dataset in test_datasets
-            ]
-        )
+        self.test_loaders = [
+            DataLoader(
+                test_dataset,
+                batch_size=self.cfg.batch_size * 3,
+                num_workers=self.cfg.num_workers,
+                shuffle=False,
+                collate_fn=default_data_collator,
+            )
+            for test_dataset in test_datasets
+        ]
+        if setup_dataloaders:
+            self.test_loaders = self.fabric.setup_dataloaders(*self.test_loaders)
+        self.shuffled_test_loaders = [
+            DataLoader(
+                test_dataset,
+                batch_size=self.cfg.batch_size,
+                num_workers=self.cfg.num_workers,
+                shuffle=True,
+                collate_fn=default_data_collator,
+            )
+            for test_dataset in test_datasets
+        ]
+        if setup_dataloaders:
+            self.shuffled_test_loaders = self.fabric.setup_dataloaders(
+                *self.shuffled_test_loaders
+            )
 
         self.shuffled_test_loader_iters = {
             dataset_name: iter(itertools.cycle(test_loader))
