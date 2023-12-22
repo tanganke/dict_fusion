@@ -62,13 +62,19 @@ def get_classification_head(cfg, dataset: str) -> ClassificationHead:
     """
     filename = os.path.join(cfg.save, f"head_{dataset}.pt")
     if os.path.exists(filename):  # file exists
-        log.info(f"Classification head for {cfg.model} on {dataset} exists at {filename}")
+        log.info(
+            f"Classification head for {cfg.model} on {dataset} exists at {filename}"
+        )
         return ClassificationHead.load(filename)
     else:  # file does not exist, build one from scratch
-        log.info(f"Did not find classification head for {cfg.model} on {dataset} at {filename}, building one from scratch.")
+        log.info(
+            f"Did not find classification head for {cfg.model} on {dataset} at {filename}, building one from scratch."
+        )
         model = ImageEncoder(cfg, keep_lang=True).model
         template = get_templates(dataset)
-        classification_head = build_classification_head(model, dataset, template, cfg.data_location, cfg.device)
+        classification_head = build_classification_head(
+            model, dataset, template, cfg.data_location, cfg.device
+        )
         os.makedirs(cfg.save, exist_ok=True)
         classification_head.save(filename)
         return classification_head

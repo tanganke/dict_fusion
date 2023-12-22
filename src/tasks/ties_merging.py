@@ -41,10 +41,14 @@ def state_dict_to_vector(state_dict: Dict[str, Tensor], remove_keys: List[str] =
         if key in shared_state_dict:
             del shared_state_dict[key]
     sorted_shared_state_dict = OrderedDict(sorted(shared_state_dict.items()))
-    return torch.nn.utils.parameters_to_vector([value.reshape(-1) for key, value in sorted_shared_state_dict.items()])
+    return torch.nn.utils.parameters_to_vector(
+        [value.reshape(-1) for key, value in sorted_shared_state_dict.items()]
+    )
 
 
-def vector_to_state_dict(vector: Tensor, state_dict: Dict[str, Tensor], remove_keys: List[str] = []) -> Dict[str, Tensor]:
+def vector_to_state_dict(
+    vector: Tensor, state_dict: Dict[str, Tensor], remove_keys: List[str] = []
+) -> Dict[str, Tensor]:
     """
     Converts a 1D tensor to a PyTorch state dictionary.
 
@@ -182,7 +186,9 @@ def disjoint_merge(M: Tensor, merge_func: str, sign_to_mult: Tensor):
 
     if merge_func == "mean":
         non_zero_counts = (selected_entries != 0).sum(dim=0).float()
-        disjoint_aggs = torch.sum(selected_entries, dim=0) / torch.clamp(non_zero_counts, min=1)
+        disjoint_aggs = torch.sum(selected_entries, dim=0) / torch.clamp(
+            non_zero_counts, min=1
+        )
     elif merge_func == "sum":
         disjoint_aggs = torch.sum(selected_entries, dim=0)
     elif merge_func == "max":

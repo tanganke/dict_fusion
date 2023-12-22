@@ -15,7 +15,10 @@ from src.datasets.resisc45 import RESISC45
 from src.datasets.sun397 import SUN397
 from src.datasets.svhn import SVHN
 
-registry = {name: obj for name, obj in inspect.getmembers(sys.modules[__name__], inspect.isclass)}
+registry = {
+    name: obj
+    for name, obj in inspect.getmembers(sys.modules[__name__], inspect.isclass)
+}
 
 
 class GenericDataset(object):
@@ -48,7 +51,9 @@ def split_train_into_train_val(
 
     lengths = [train_size, val_size]
 
-    trainset, valset = random_split(dataset.train_dataset, lengths, generator=torch.Generator().manual_seed(seed))
+    trainset, valset = random_split(
+        dataset.train_dataset, lengths, generator=torch.Generator().manual_seed(seed)
+    )
     if new_dataset_class_name == "MNISTVal":
         assert trainset.indices[0] == 36044
 
@@ -66,10 +71,15 @@ def split_train_into_train_val(
     )
 
     new_dataset.test_dataset = valset
-    new_dataset.test_loader = torch.utils.data.DataLoader(new_dataset.test_dataset, batch_size=batch_size, num_workers=num_workers)
+    new_dataset.test_loader = torch.utils.data.DataLoader(
+        new_dataset.test_dataset, batch_size=batch_size, num_workers=num_workers
+    )
 
     new_dataset.test_loader_shuffle = torch.utils.data.DataLoader(
-        new_dataset.test_dataset, shuffle=True, batch_size=batch_size, num_workers=num_workers
+        new_dataset.test_dataset,
+        shuffle=True,
+        batch_size=batch_size,
+        num_workers=num_workers,
     )
 
     new_dataset.classnames = copy.copy(dataset.classnames)
@@ -107,11 +117,24 @@ def get_dataset(
             dataset_class = registry[dataset_name]
         else:
             base_dataset_name = dataset_name.split("Val")[0]
-            base_dataset = get_dataset(base_dataset_name, preprocess, location, batch_size, num_workers)
-            dataset = split_train_into_train_val(base_dataset, dataset_name, batch_size, num_workers, val_fraction, max_val_samples)
+            base_dataset = get_dataset(
+                base_dataset_name, preprocess, location, batch_size, num_workers
+            )
+            dataset = split_train_into_train_val(
+                base_dataset,
+                dataset_name,
+                batch_size,
+                num_workers,
+                val_fraction,
+                max_val_samples,
+            )
             return dataset
     else:
-        assert dataset_name in registry, f"Unsupported dataset: {dataset_name}. Supported datasets: {list(registry.keys())}"
+        assert (
+            dataset_name in registry
+        ), f"Unsupported dataset: {dataset_name}. Supported datasets: {list(registry.keys())}"
         dataset_class = registry[dataset_name]
-    dataset = dataset_class(preprocess, location=location, batch_size=batch_size, num_workers=num_workers)
+    dataset = dataset_class(
+        preprocess, location=location, batch_size=batch_size, num_workers=num_workers
+    )
     return dataset

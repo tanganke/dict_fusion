@@ -189,11 +189,11 @@ class QNLI_Preprocessor(DatasetPreprocessor):
         assert isinstance(question, str)
         assert isinstance(sentence, str)
         assert isinstance(label, int)
-        input_text = self.template['input_text'].format(
+        input_text = self.template["input_text"].format(
             question=question, sentence=sentence
         )
         if label in [0, 1]:
-            target_text = self.template['target_text'][str(label)]
+            target_text = self.template["target_text"][str(label)]
         else:
             target_text = ""
         return input_text, target_text
@@ -335,10 +335,10 @@ class STSB_Preprocessor(DatasetPreprocessor):
         assert isinstance(
             label, (float, int)
         ), f"label must be a float or an integer, got {type(label)}, label={label}"
-        input_text = self.template['input_text'].format(
+        input_text = self.template["input_text"].format(
             sentence1=sentence1, sentence2=sentence2
         )
-        target_text = self.template['target_text'].format(label)
+        target_text = self.template["target_text"].format(label)
         return input_text, target_text
 
     def __call__(self, example):
