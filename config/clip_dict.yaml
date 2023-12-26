@@ -4,6 +4,7 @@ defaults:
 
 eval_dict_tta: true
 eval_dict: false
+profile: false
 
 batch_size: 4
 

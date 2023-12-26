@@ -34,3 +34,5 @@ test_datasets:
   - GTSRB
   - MNIST
   - DTD
+
+seen_datasets: null

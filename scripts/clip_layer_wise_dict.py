@@ -157,10 +157,8 @@ class ByBatchProgram(BySampleProgram):
 def main(cfg: DictConfig) -> None:
     if cfg.eval_dict_tta and not cfg.eval_dict:
         (program := ByBatchProgram(cfg)).run()
-    elif not cfg.eval_dict_tta and cfg.eval_dict:
-        (program := BySampleProgram(cfg)).run()
     else:
-        raise ValueError("either eval_dict or eval_dict_tta must be True")
+        (program := BySampleProgram(cfg)).run()
 
 
 if __name__ == "__main__":

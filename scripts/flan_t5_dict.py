@@ -11,6 +11,7 @@ from torch.func import functional_call
 
 from src.adamerging import softmax_entropy
 from src.tasks.arithmetic import *
+from src.utils import num_parameters
 
 
 class DictLearnTTAProgram(flan_t5_individuals.Program, ABC):
@@ -35,12 +36,33 @@ class DictLearnTTAProgram(flan_t5_individuals.Program, ABC):
 
     def run(self):
         self.load_models()
+
+        if self.cfg.profile:
+            self.profile()
+
+        if not (self.cfg.eval_dict_tta or self.cfg.eval_dict):
+            return
+
         self.load_datasets(setup_dataloaders=False)
 
         if self.cfg.eval_dict_tta:
             self.eval_dict_tta()
         if self.cfg.eval_dict:
             self.eval_dict()
+
+    def profile(self):
+        """
+        list the number of parameters of self._feature_extractor and self._dict_mapping and self.forward_model
+        """
+        print("feature extractor")
+        print(num_parameters(self._dict_feature_extractor))
+        print("dict mapping")
+        print(num_parameters(self._dict_mapping))
+        print("forward model")
+        print(num_parameters(self.forward_model))
+        if hasattr(self, "num_layers"):
+            print("num layers")
+            print(self.num_layers)
 
     def eval_dict_tta(self):
         optimizer = torch.optim.Adam(self._dict_mapping.parameters(), lr=self.cfg.lr)
