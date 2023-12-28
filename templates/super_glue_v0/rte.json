@@ -1,0 +1,8 @@
+{
+    "description": "template used for fine-tuning SUPERGLUE-RTE",
+    "input_text": "Read the following text carefully: '{premise}'. Does this text logically suggest that the hypothesis '{hypothesis}' is true? Respond with 'yes' if it does, 'no' if it contradicts the hypothesis.",
+    "target_text": {
+        "0": "yes",
+        "1": "no"
+    }
+}

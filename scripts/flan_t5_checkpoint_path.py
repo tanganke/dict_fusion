@@ -4,7 +4,7 @@ from transformers import AutoConfig, AutoModelForSeq2SeqLM
 log = logging.getLogger(__name__)
 
 CHECKPOINT_DIR = CACHE_DIR / "checkpoints"
-MODELS = ["flan-t5-base", "flan-t5-large"]
+MODELS = ["flan-t5-small", "flan-t5-base", "flan-t5-large", "flan-t5-xl", "flan-t5-xxl"]
 DATASETS = [
     "glue-cola",
     "glue-mnli",
@@ -15,6 +15,13 @@ DATASETS = [
     "glue-sst2",
     "glue-stsb",
     "glue-wnli",
+    "super_glue-cb",
+    "super_glue-copa",
+    "super_glue-multirc",
+    "super_glue-wic",
+    "super_glue-wsc",
+    "super_glue-rte",
+    "super_glue-boolq",
 ]
 
 

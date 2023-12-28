@@ -1,0 +1,16 @@
+name: super_glue-multirc
+
+datasets:
+  _target_: datasets.load_dataset
+  path: super_glue
+  name: multirc
+
+preprocessor:
+  _target_: src.tasks.super_glue.multirc
+  template_file: super_glue_v0/multirc.json
+
+map_kwargs:
+  remove_columns: ['idx']
+  batched: true
+  num_proc: 1
+  desc: Running tokenizer on dataset

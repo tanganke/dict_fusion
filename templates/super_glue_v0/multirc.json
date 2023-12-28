@@ -1,0 +1,8 @@
+{
+    "description": "template used by SUPERGLUE-MultiRC",
+    "input_text": "Based on the paragraph: \"{paragraph}\" Does '{answer}' correctly answer the question: \"{question}\"? Answere 'yes' or 'no'.",
+    "target_text": {
+        "0": "no",
+        "1": "yes"
+    }
+}

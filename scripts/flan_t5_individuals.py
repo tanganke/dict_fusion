@@ -40,7 +40,33 @@ def remove_special_tokens(tokenizer, token_list: list):
     return ret
 
 
-def evaluate_accuracy(model, val_loader: DataLoader, tokenizer):
+def strip_whitespace_and_punctuation(input_string):
+    """
+    This function removes all whitespace and punctuation from the beginning and end of the input string.
+
+    Parameters:
+        input_string (str): The string to be processed.
+
+    Returns:
+        str: The processed string with all whitespace and punctuation removed from the beginning and end.
+    """
+    import string
+
+    # Remove leading and trailing whitespace
+    stripped_string = input_string.strip()
+
+    # Remove leading and trailing punctuation
+    stripped_string = stripped_string.strip(string.punctuation)
+
+    return stripped_string
+
+
+def evaluate_accuracy(
+    model,
+    val_loader: DataLoader,
+    tokenizer,
+    strip_punctuations: bool = True,
+):
     """
     This function evaluates the accuracy of a language model on a validation set.
 
@@ -58,7 +84,9 @@ def evaluate_accuracy(model, val_loader: DataLoader, tokenizer):
     total = 0
 
     model = model.eval()
-    for batch_idx, batch in enumerate(tqdm(val_loader, desc="round", leave=False)):
+    for batch_idx, batch in enumerate(
+        pbar := tqdm(val_loader, desc="round", leave=False)
+    ):
         with torch.no_grad():
             outputs = model.generate(batch["input_ids"])
             output_text = tokenizer.batch_decode(outputs, skip_special_tokens=True)
@@ -68,9 +96,13 @@ def evaluate_accuracy(model, val_loader: DataLoader, tokenizer):
 
             # compare output_text and labels
             for i, j in zip(output_text, labels):
+                if strip_punctuations:
+                    i = strip_whitespace_and_punctuation(i)
+                    j = strip_whitespace_and_punctuation(j)
                 if i == j:
                     correct += 1
                 total += 1
+            pbar.set_postfix_str(f"acc: {correct / total:.4f}")
 
     # return accuracy
     return correct / total
@@ -143,6 +175,9 @@ metric_func["glue-stsb"] = evaluate_spearman_rho
 class Program:
     def __init__(self, cfg: DictConfig):
         self.cfg = cfg
+        print(OmegaConf.to_yaml(cfg))
+        cfg.PROJECT_DIR = str(PROJECT_DIR)
+
         if hasattr(cfg, "seed") and cfg.seed is not None:
             log.info(f"set seed to {cfg.seed}")
             L.seed_everything(cfg.seed)
@@ -176,7 +211,7 @@ class Program:
         print(pd.DataFrame(results))
 
         # finetuned models
-        for dataset_name, task_vector in track(
+        for dataset_name, task_vector in tqdm(
             zip(self.cfg.test_datasets, self.task_vectors),
             "evaluating fine-tuned models",
         ):
@@ -266,8 +301,11 @@ class Program:
         ):
             if cfg.peft.peft_config is None:
                 weight_file = finetuned_model_path(
-                    cfg.model.name, template_name="glue_v1", dataset_name=dataset_name
+                    cfg.model.name,
+                    template_name=self.cfg.template_name,
+                    dataset_name=dataset_name,
                 )
+                log.info(f"loading weights from {weight_file}")
                 weights = torch.load(weight_file, map_location="cpu")
                 with torch.no_grad():
                     task_vectors.append(
@@ -277,9 +315,12 @@ class Program:
                 # if peft is used, we need to load the peft model and merge the task vector
                 # the task vector is the difference between the peft model after merged and the pretrained model
                 weight_file = finetuned_model_path(
-                    cfg.model.name, template_name="glue_v1", dataset_name=dataset_name
+                    cfg.model.name,
+                    template_name=self.cfg.template_name,
+                    dataset_name=dataset_name,
                 )
                 weight_file = weight_file.parent / cfg.peft.name / weight_file.name
+                log.info(f"loading weights from {weight_file}")
                 weights = torch.load(weight_file, map_location="cpu")
                 peft_model.load_state_dict(weights, strict=False)
                 with torch.no_grad():
@@ -328,7 +369,7 @@ class Program:
             self.cfg.test_datasets, description="loading datasets"
         ):
             if (cache_dir := CACHE_DIR / "datasets" / dataset_name).exists():
-                log.info(f"loading dataset {dataset_name} from cache")
+                log.info(f"loading dataset {dataset_name} from cache {cache_dir}")
                 dataset = load_from_disk(cache_dir)
             else:
                 config = OmegaConf.load(
@@ -341,7 +382,7 @@ class Program:
                     preprocessor = instantiate(
                         config.preprocessor,
                         template_file=TEMPLATE_DIR
-                        / "glue_v1"
+                        / self.cfg.template_name
                         / os.path.basename(config.preprocessor.template_file),
                         tokenizer=self.tokenizer,
                         tokenizer_kwargs=self.cfg.model.tokenizer_kwargs

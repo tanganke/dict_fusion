@@ -1,0 +1,15 @@
+name: super_glue-wsc
+
+datasets:
+  _target_: datasets.load_dataset
+  path: super_glue
+  name: wsc
+
+preprocessor:
+  _target_: src.tasks.super_glue.wsc
+  template_file: super_glue_v0/wsc.json
+
+map_kwargs:
+  batched: true
+  num_proc: 1
+  desc: Running tokenizer on dataset

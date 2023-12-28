@@ -47,12 +47,18 @@ SRC_DIR = PROJECT_DIR / "src"
 CONFIG_DIR = PROJECT_DIR / "config"
 CACHE_DIR = PROJECT_DIR / "cache"
 TEMPLATE_DIR = PROJECT_DIR / "templates"
+LOG_DIR = PROJECT_DIR / "logs"
 
 sys.path.append(str(PROJECT_DIR))
 
 from src.utils import timeit_context
 
 log.debug(f"{PROJECT_DIR=}")
+
+
+def get_project_dir_str():
+    return str(PROJECT_DIR)
+
 
 __all__ = [
     n for n in globals().keys() if not n.startswith("_") and n not in ["log", "install"]

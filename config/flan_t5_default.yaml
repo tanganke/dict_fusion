@@ -2,11 +2,13 @@ defaults:
   - hydra: default
   - models: flan-t5-base
   - peft: lora-16
+  - default
   - _self_
 
 seed: 42
 model: ${.models}
 
+template_name: glue_v1
 test_datasets:
   - glue-cola
   - glue-mnli
@@ -25,8 +27,8 @@ num_workers: 8
 trainer:
   accelerator: gpu
   devices: 1
-  max_epochs: 5
-  max_steps: -1
+  max_epochs: ???
+  max_steps: ???
   accumulate_grad_batches: 1
   profiler: simple
   enable_checkpointing: true # manually save checkpoints

@@ -11,4 +11,4 @@ name: flan-t5-large
 #   truncation: true
 #   return_tensors: pt
 
-linearize: true
+linearize: false

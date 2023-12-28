@@ -1,0 +1,96 @@
+{
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Python: Current File",
+            "type": "python",
+            "request": "launch",
+            "program": "${file}",
+            "console": "integratedTerminal",
+            "justMyCode": true
+        },
+        {
+            "name": "clip_task_wise_dict",
+            "type": "python",
+            "request": "launch",
+            "program": "scripts/clip_task_wise_dict.py",
+            "console": "integratedTerminal",
+            "justMyCode": true,
+            "args": [
+                "task_vector_devices=[1,2]"
+            ]
+        },
+        {
+            "name": "clip_task_wise_dict(count_flops)",
+            "type": "python",
+            "request": "launch",
+            "program": "scripts/clip_task_wise_dict.py",
+            "console": "integratedTerminal",
+            "justMyCode": true,
+            "args": [
+                "eval_dict_tta=false",
+                "eval_dict=false",
+                "profile=true"
+            ]
+        },
+        {
+            "name": "clip_task_wise_dict(count_flops,resnet50)",
+            "type": "python",
+            "request": "launch",
+            "program": "scripts/clip_task_wise_dict.py",
+            "console": "integratedTerminal",
+            "justMyCode": true,
+            "args": [
+                "dict_feature_extractor=microsoft/resnet-50",
+                "eval_dict_tta=false",
+                "eval_dict=false",
+                "profile=true"
+            ]
+        },
+        {
+            "name": "flan_t5_finetune (flan-t5-small, super_glue-boolq)",
+            "type": "python",
+            "request": "launch",
+            "program": "scripts/flan_t5_finetune.py",
+            "console": "integratedTerminal",
+            "justMyCode": true,
+            "args": [
+                "models=flan-t5-small",
+                "+dataset=super_glue-boolq",
+                "+optim=adam"
+            ]
+        },
+        {
+            "name": "flan_t5_task_wise_dict(train)",
+            "type": "python",
+            "request": "launch",
+            "program": "scripts/flan_t5_task_wise_dict.py",
+            "console": "integratedTerminal",
+            "justMyCode": true,
+            "args": [
+                "eval_dict_tta=true",
+                "eval_dict=false",
+                "fast_dev_run=true",
+                "batch_size=2",
+            ]
+        },
+        {
+            "name": "flan_t5_task_wise_dict(eval)",
+            "type": "python",
+            "request": "launch",
+            "program": "scripts/flan_t5_task_wise_dict.py",
+            "console": "integratedTerminal",
+            "justMyCode": true,
+            "args": [
+                "version=0",
+                "eval_dict_tta=false",
+                "eval_dict=true",
+                "fast_dev_run=true",
+                "batch_size=2",
+            ]
+        },
+    ]
+}

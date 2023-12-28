@@ -28,6 +28,7 @@ class DictLearnTTAProgram(flan_t5_individuals.Program, ABC):
         if hasattr(cfg, "seed") and cfg.seed is not None:
             log.info(f"set seed to {cfg.seed}")
             L.seed_everything(cfg.seed)
+        cfg.PROJECT_DIR = get_project_dir_str()
 
         if cfg.peft.peft_config is None:
             self.result_dir = RESULTS_DIR / cfg.model.name
@@ -65,7 +66,7 @@ class DictLearnTTAProgram(flan_t5_individuals.Program, ABC):
             print(self.num_layers)
 
     def eval_dict_tta(self):
-        optimizer = torch.optim.Adam(self._dict_mapping.parameters(), lr=self.cfg.lr)
+        optimizer = torch.optim.AdamW(self._dict_mapping.parameters(), lr=self.cfg.lr)
         self._dict_mapping.train()
         for step_idx in tqdm(range(1000), "training dict mapping"):
             losses = 0
@@ -100,7 +101,7 @@ class DictLearnTTAProgram(flan_t5_individuals.Program, ABC):
         results = defaultdict(list)
 
         for step_idx in tqdm(
-            reversed(range(100, 1001, 100)), "evaluating dict mapping", leave=False
+            reversed(range(100, 1001, 300)), "evaluating dict mapping", leave=False
         ):
             self._dict_mapping = torch.load(
                 self.result_dir / "checkpoints" / f"dict_mapping_step={step_idx}.pt",

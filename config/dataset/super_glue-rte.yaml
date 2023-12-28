@@ -1,0 +1,15 @@
+name: super_glue-rte
+
+datasets:
+  _target_: datasets.load_dataset
+  path: super_glue
+  name: rte
+
+preprocessor:
+  _target_: src.tasks.super_glue.rte
+  template_file: super_glue_v0/rte.json
+
+map_kwargs:
+  batched: true
+  num_proc: 1
+  desc: Running tokenizer on dataset

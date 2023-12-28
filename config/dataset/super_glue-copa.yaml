@@ -1,0 +1,15 @@
+name: super_glue-copa
+
+datasets:
+  _target_: datasets.load_dataset
+  path: super_glue
+  name: copa
+
+preprocessor:
+  _target_: src.tasks.super_glue.copa
+  template_file: super_glue_v0/copa.json
+
+map_kwargs:
+  batched: true
+  num_proc: 1
+  desc: Running tokenizer on dataset

@@ -6,4 +6,4 @@ defaults:
 model_name_or_path: google/flan-t5-base
 name: flan-t5-base
 
-linearize: true
+linearize: false

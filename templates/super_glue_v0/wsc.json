@@ -1,0 +1,8 @@
+{
+    "description": "template used for fine-tuning SUPERGLUE-WSC",
+    "input_text": "Analyze the sentence: '{text}' Identify whether the pronoun '{span2_text}' refers to the noun phrase '{span1_text}'. Can '{span2_text}' be replaced by '{span1_text}' without changing the meaning of the sentence? Supply 'yes' if it can, or 'no' if it can't.",
+    "target_text": {
+        "0": "no",
+        "1": "yes"
+    }
+}

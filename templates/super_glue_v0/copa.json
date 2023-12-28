@@ -1,0 +1,8 @@
+{
+    "description": "template used for fine-tuning SUPERGLUE-COPA",
+    "input_text": "Consider the given situation: '{premise}'. What logically follows this scenario? Option 1: '{choice1}', or Option 2: '{choice2}'? Choose the option that correctly completes the scenario. Respond with 'Option 1' or 'Option 2'",
+    "target_text": {
+        "0": "Option 1",
+        "1": "Option 2"
+    }
+}

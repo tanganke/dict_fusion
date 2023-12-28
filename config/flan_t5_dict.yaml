@@ -7,6 +7,7 @@ eval_dict: true
 profile: false
 
 batch_size: 4
+num_workers: 0
 
 dict_feature_extractor: paraphrase-MiniLM-L6-v2 # sentenceTransformer: https://huggingface.co/sentence-transformers
 

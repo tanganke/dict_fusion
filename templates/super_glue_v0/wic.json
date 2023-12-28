@@ -1,0 +1,8 @@
+{
+    "description": "template used by SUPERGLUE-WiC",
+    "input_text": "Does the word '{word}' have the same meaning in these two sentences? '{sentence1}' and '{sentence2}' Answer with 'yes' or 'no'.",
+    "target_text": {
+        "0": "no",
+        "1": "yes"
+    }
+}
