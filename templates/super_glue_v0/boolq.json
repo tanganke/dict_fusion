@@ -1,6 +1,6 @@
 {
     "description": "template used by SUPERGLUE-BoolQ",
-    "input_text": "Given the passage: \"{passage}\" Is the following statement '{question}' true or false?",
+    "input_text": "Given the passage: \"{passage}\" Is the following statement '{question}' true or false? Respond 'true' or 'false'.",
     "target_text": {
         "0": "false",
         "1": "true"

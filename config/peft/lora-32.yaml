@@ -1,3 +1,5 @@
+name: lora-32
+
 peft_config:
   _target_: peft.LoraConfig
   target_modules:

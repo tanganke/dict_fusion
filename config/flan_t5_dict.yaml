@@ -14,7 +14,7 @@ dict_feature_extractor: paraphrase-MiniLM-L6-v2 # sentenceTransformer: https://h
 
 version: null
 
-lr: 1e-5
+lr: 5e-6
 
 # device configurations
 dict_feature_extractor_device: cuda

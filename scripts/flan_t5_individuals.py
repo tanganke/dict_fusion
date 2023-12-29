@@ -224,6 +224,7 @@ class Program:
             for dataset_name, score in _results.items():
                 results[dataset_name].append(score)
             print(pd.DataFrame(results))
+            pd.DataFrame(results).to_csv(self.results_path, index=False)
 
         # save results
         pd.DataFrame(results).to_csv(self.results_path, index=False)
@@ -372,9 +373,7 @@ class Program:
                 log.info(f"loading dataset {dataset_name} from cache {cache_dir}")
                 dataset = load_from_disk(cache_dir)
             else:
-                config = OmegaConf.load(
-                    CONFIG_DIR / "datasets" / f"{dataset_name}.yaml"
-                )
+                config = OmegaConf.load(CONFIG_DIR / "dataset" / f"{dataset_name}.yaml")
                 dataset = instantiate(config.datasets)
 
                 if hasattr(config, "preprocessor"):
