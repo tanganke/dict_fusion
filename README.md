@@ -16,7 +16,7 @@ pip install -r requirements.txt # x86-64 Linux
 
 ## Experiments
 
-**the checkpoints and logs from our expriments will be available on GitHub after the double-blind review process.**
+**the checkpoints from our expriments will be available on GitHub after the double-blind review process. The results csv files are in the [`results`](results) directory**
 
 ### Multi-task model fusion on CLIP models
 
