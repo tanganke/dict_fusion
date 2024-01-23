@@ -35,4 +35,7 @@ test_datasets:
   - MNIST
   - DTD
 
-seen_datasets: null
+seen_datasets: null # if seen_datasets is None, set seen_datasets to test_datasets
+model_seen_datasets: null # if `model_seen_datasets` is not None, load models in `model_seen_datasets`, else load models in `seen_datasets`
+
+corruption: null
