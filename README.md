@@ -134,3 +134,44 @@ python scripts/clip_task_wise_dict.py version=1 \
         eval_dict_tta=false eval_dict=true \
         dict_feature_extractor=microsoft/resnet-50
 ```
+
+### Ablations of Test Data Distribution
+
+generate corruption test data:
+
+```bash
+python scripts/make_corruption.py
+```
+
+Evaluate our method:
+
+```bash
+model=ViT-B-32 # or ViT-B-16
+
+function ood_exp() {
+    version=$1
+    corruption=$2
+    python scripts/clip_task_wise_dict.py version=$version \
+            batch_size=16 \
+            eval_dict_tta=true eval_dict=false \
+            dict_feature_extractor=microsoft/resnet-50 lr=5e-6 \
+            model=$model \
+            test_datasets="[Cars,EuroSAT,RESISC45,GTSRB]" corruption=$corruption
+
+    python scripts/clip_task_wise_dict.py version=$version \
+            batch_size=64 num_workers=16 \
+            eval_dict_tta=false eval_dict=true \
+            dict_feature_extractor=microsoft/resnet-50 \
+            model=$model \
+            test_datasets="[Cars,EuroSAT,RESISC45,GTSRB]" corruption=$corruption
+}
+
+ood_exp 2 null
+ood_exp 3 motion_blur
+ood_exp 4 impulse_noise
+ood_exp 5 gaussian_noise
+ood_exp 6 pixelate
+ood_exp 7 spatter
+ood_exp 8 contrast
+ood_exp 9 jpeg_compression
+```

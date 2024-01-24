@@ -9,6 +9,8 @@ lightning_logs/
 # /results/
 /data/
 *.backup*
+data
+cache
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

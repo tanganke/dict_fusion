@@ -104,7 +104,7 @@ class DictLearnTTAProgram(ABC):
         results = defaultdict(list)
 
         for step_idx in tqdm(
-            reversed(range(100, 1001, 100)), "evaluating dict mapping", leave=False
+            reversed(range(1000, 1001, 100)), "evaluating dict mapping", leave=False
         ):
             self._dict_mapping = torch.load(
                 self.result_dir / "checkpoints" / f"dict_mapping_step={step_idx}.pt",
@@ -243,7 +243,12 @@ class DictLearnTTAProgram(ABC):
                 pretrained_model_path(cfg.model), map_location="cpu"
             )
             finetuned_models = []
-            for dataset_name in track(cfg.seen_datasets, "loading finetuned models"):
+            for dataset_name in track(
+                cfg.seen_datasets
+                if cfg.model_seen_datasets is None
+                else cfg.model_seen_datasets,
+                "loading finetuned models",
+            ):
                 log.info(f"loading finetuned model for {dataset_name}")
                 finetuned_models.append(
                     torch.load(
@@ -365,7 +370,11 @@ class DictLearnTTAProgram(ABC):
 
     def load_models(self, *, free_finetuned_models: bool = True):
         cfg = self.cfg
-        self.num_tasks = len(cfg.seen_datasets)
+        self.num_tasks = len(
+            cfg.seen_datasets
+            if cfg.model_seen_datasets is None
+            else cfg.model_seen_datasets
+        )
 
         self.load_clip_models()
         with timeit_context("Computing task vectors"):
@@ -415,7 +424,10 @@ class DictLearnTTAProgram(ABC):
         import open_clip.transform
         import torchvision.transforms
 
-        from src.datasets.registry import get_dataset
+        if self.cfg.corruption is None:
+            from src.datasets.registry import get_dataset
+        else:
+            from src.datasets.corruption.registry import get_dataset
 
         cfg = self.cfg
 
@@ -427,13 +439,18 @@ class DictLearnTTAProgram(ABC):
             ]
         )
 
+        dataset_kwargs = dict(
+            location=cfg.data_location,
+            batch_size=cfg.batch_size,
+            num_workers=cfg.num_workers,
+        )
+        if self.cfg.corruption is not None:
+            dataset_kwargs["corruption"] = self.cfg.corruption
         datasets = [
             get_dataset(
                 dataset_name,
                 basic_transform,
-                location=cfg.data_location,
-                batch_size=cfg.batch_size,
-                num_workers=cfg.num_workers,
+                **dataset_kwargs
             )
             for dataset_name in cfg.test_datasets
         ]
